@@ -12,11 +12,11 @@ def test_mindboggle_dataset(capsys):
         print(' inputs:', x.shape)
         print(' labels:', y.shape)
 
-def test_ppmi_dataset(capsys):
-    data_dir = './data/PPMI_reg'
-    ds = brainchild.loader.PPMIData(data_dir)
-    with capsys.disabled():
-        print(ds[0])
+# def test_ppmi_dataset(capsys):
+#     data_dir = './data/PPMI_reg'
+#     ds = brainchild.loader.PPMIData(data_dir)
+#     with capsys.disabled():
+#         print(ds[0])
 def test_load_dataset(capsys):
     data_dir = './data/Mindboggle'
     loader = iter(brainchild.loader.load_dataset(data_dir, dataset='Mindboggle', goal='register'))

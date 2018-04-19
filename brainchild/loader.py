@@ -68,24 +68,23 @@ def metadata(data_dir):
     ignore = ['.DS_Store', 'metadata.csv']
 
     # Open the metadata csv
-    data_dir = Path(data_dir)
-    meta = pd.read_csv(data_dir / 'metadata.csv')
+    dir = Path(data_dir)
+    meta = pd.read_csv(dir / 'metadata.csv')
     meta = meta.sort_values('Subject')
     meta = meta[['Subject', 'Group']]
     meta = meta.drop_duplicates()
     meta = meta.set_index('Subject')
 
-    for path in data_dir.glob('*'):
+    for path in dir.glob('*'):
         if path.name in ignore: continue
         subject = int(path.name)
         label = 'PD' in meta.loc[subject]['Group']
         label = int(label)
-        paths = Path(path).glob('**/*.nii',)
-        paths = (p for p in paths if p.name not in ignore)
-        ret.extend({
-            'path': p,
-            'label': label,
-        } for p in paths)
+        path = Path(path).glob('**/*.nii')
+        path = list(path)[0].as_uri()
+        ret.append({
+            'path': path,
+            'label': label})
 
     return ret
 def get_registration_data(data_dir):
