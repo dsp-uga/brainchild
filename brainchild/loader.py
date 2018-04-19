@@ -3,6 +3,8 @@ import nibabel
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
+from pathlib import Path
+
 
 # Adapted from dataloader built for previous course assigment
 
@@ -20,7 +22,7 @@ class MindboggleData(Dataset):
     def __getitem__(self, i):
         meta = self.meta[i]
         img = nibabel.load(meta['path'])
-        x = img.get_fdata(caching='unchanged'))
+        x = img.get_fdata(caching='unchanged')
         x = torch.from_numpy(x)
         trgt_img = nibabel.load(meta['label'])
         y = trgt_img.get_fdata(caching='unchanged')
@@ -78,7 +80,7 @@ def metadata(data_dir):
         subject = int(path.name)
         label = 'PD' in meta.loc[subject]['Group']
         label = int(label)
-        paths = Path(path).glob(f'**', recursive=True)
+        paths = Path(path).glob('**/*.nii',)
         paths = (p for p in paths if p.name not in ignore)
         ret.extend({
             'path': p,
@@ -106,15 +108,18 @@ def get_registration_data(data_dir):
     ignore = ['.DS_Store', 'subject_list_Mindboggle101.txt']
 
     # Open the metadata csv
-    data_dir = Path(data_dir)
-    subjects = np.loadtxt(fname=data_dir/ 'subject_list_Mindboggle101.txt', dtype='str')
+    # data_dir = Path(data_dir)
+    with open(f'{data_dir}/subject_list_Mindboggle101.txt') as f:
+        subjects = f.readlines()
+    subjects = [x.strip() for x in subjects]
     for person in subjects:
-        label = data_dir / 'Registered' / person / 't1weighted_brain.MNI152.nii.gz'
-        path =  data_dir / 'Unregistered' / person / 't1weighted_brain.nii.gz'
-        ret.extend({
-            'path': path,
-            'label': label,
-        })
+        label = f'{data_dir}/Registered/{person}/t1weighted_brain.MNI152.nii.gz'
+        path =  f'{data_dir}/Unregistered/{person}/t1weighted_brain.nii.gz'
+        tmp_dict = {}
+        tmp_dict['path'] = path
+        tmp_dict['label'] = label
+        ret.append(tmp_dict)
+
     return ret
 def get_segmentation_data(data_dir, seg_type='DKT31'):
     '''Load the Mindboggle dataset.
@@ -136,19 +141,20 @@ def get_segmentation_data(data_dir, seg_type='DKT31'):
     ignore = ['.DS_Store', 'subject_list_Mindboggle101.txt']
     labels_fname = f'labels.{seg_type}.manual.nii.gz'
     # Open the metadata csv
-    data_dir = Path(data_dir)
-    subjects = np.loadtxt(fname=data_dir/ 'subject_list_Mindboggle101.txt', dtype='str')
+    with open(f'{data_dir}/subject_list_Mindboggle101.txt') as f:
+        subjects = f.readlines()
+    subjects = [x.strip() for x in subjects]
     for person in subjects:
         for type in ['Registered', 'Unregistered']:
             label = data_dir / type / person / labels_fname
             if type == 'Registered':
-                path = data_dir / type / person / 't1weighted_brain.MNI152.nii.gz'
+                path = f'{data_dir}/{type}/{person}/t1weighted_brain.MNI152.nii.gz'
             elif type == 'Unregistered':
-                path = data_dir / type / person / 't1weighted_brain.nii.gz'
-            ret.extend({
-                'path': path,
-                'label': label,
-            })
+                path = f'{data_dir}/{type}/{person}/t1weighted_brain.nii.gz'
+            tmp_dict = {}
+            tmp_dict['path'] = path
+            tmp_dict['label'] = label
+            ret.append(tmp_dict)
     return ret
 def load_dataset(data_dir, dataset, goal, **kwargs):
     '''Creates a pytorch DataLoader that iterates over dataset out of core.
@@ -191,8 +197,8 @@ def load_dataset(data_dir, dataset, goal, **kwargs):
     kwargs.setdefault('shuffle', True)
     kwargs.setdefault('num_workers', 4)
     kwargs.setdefault('pin_memory', torch.cuda.is_available())
-    if dataset=='Mindboggle'
+    if dataset=='Mindboggle':
         ds = MindboggleData(data_dir, goal)
-    elif dataset=='PPMI'
+    elif dataset=='PPMI':
         ds = PPMIData(data_dir)
     return DataLoader(ds, **kwargs)
