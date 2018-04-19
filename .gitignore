@@ -126,6 +126,7 @@ ENV/
 # output files
 /output
 /results
+.pytest_cache
 
 # Google Cloud Scripts
 gcp.sh
