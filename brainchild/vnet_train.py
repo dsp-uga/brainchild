@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[119]:
-
-
 import numpy as np
 
 import torch
@@ -28,7 +22,6 @@ import loader
 import vnet
 
 
-# In[101]:
 
 
 #Initailize the weights 
@@ -40,16 +33,12 @@ def weights_init(m):
         m.bias.data.zero_()
 
 
-# In[102]:
-
 
 #Generate String to save the model with the time stamp.
 def datestr():
     now = time.gmtime()
     return '{}{:02}{:02}_{:02}{:02}'.format(now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min)
 
-
-# In[116]:
 
 
 #Loads the data.
@@ -61,7 +50,6 @@ def load_dataset():
     return data
 
 
-# In[104]:
 
 
 #Adjust the optimization Parameters based on the number of the epochs.
@@ -80,7 +68,6 @@ def adjust_opt(optAlg, optimizer, epoch):
             param_group['lr'] = lr
 
 
-# In[105]:
 
 
 #Train the model and save it.
@@ -190,11 +177,6 @@ def inference(args, loader, model, transforms):
 
 
 # In[109]:
-
-
-# performing post-train inference:
-# train.py --resume <model checkpoint> --i <input directory (*.mhd)> --save <output directory>
-
 def noop(x):
     return x
 
@@ -203,30 +185,6 @@ def noop(x):
 
 
 def main():
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('--batchSz', type=int, default=10)
-#     parser.add_argument('--dice', action='store_true')
-#     parser.add_argument('--ngpu', type=int, default=1)
-#     parser.add_argument('--nEpochs', type=int, default=300)
-#     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-#                         help='manual epoch number (useful on restarts)')
-#     parser.add_argument('--resume', default='', type=str, metavar='PATH',
-#                         help='path to latest checkpoint (default: none)')
-#     parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-#                         help='evaluate model on validation set')
-#     parser.add_argument('-i', '--inference', default='', type=str, metavar='PATH',
-#                         help='run inference on data set and save results')
-
-#     # 1e-8 works well for lung masks but seems to prevent
-#     # rapid learning for nodule masks
-#     parser.add_argument('--weight-decay', '--wd', default=1e-8, type=float,
-#                         metavar='W', help='weight decay (default: 1e-8)')
-#     parser.add_argument('--no-cuda', action='store_true')
-#     parser.add_argument('--save')
-#     parser.add_argument('--seed', type=int, default=1)
-#     parser.add_argument('--opt', type=str, default='adam',
-#                         choices=('sgd', 'adam', 'rmsprop'))
-#     args = parser.parse_args()
     best_prec1 = 100.
     seed = 100
     
@@ -238,7 +196,7 @@ def main():
 
     save_model_path = 'work/vnet.base.{}'.format(datestr())
     nll = True #Softmax function (regular or logarithmic)
-    weight_decay = 0 #weight decay TODO
+    weight_decay = 0 #weight decay 
     is_resume = False
     opt_algo = 'sgd'
     print('Parameters Initialized.')
@@ -278,16 +236,7 @@ def main():
     else:
         model.apply(weights_init)
 
-#  For now it is useless as it is not used as the softmax would be just used without any log function.
 
-#     if nll:
-#         train = train_nll
-#         test = test_nll
-#         class_balance = True
-#     else:
-#         train = train_dice
-#         test = test_dice
-#         class_balance = False
 
     print('  + Number of params: {}'.format(
         sum([p.data.nelement() for p in model.parameters()])))
@@ -295,41 +244,6 @@ def main():
         model = model.cuda()
 
 
-
-
-#     # LUNA16 dataset isotropically scaled to 2.5mm^3
-#     # and then truncated or zero-padded to 160x128x160
-#     normMu = [-642.794]
-#     normSigma = [459.512]
-#     normTransform = transforms.Normalize(normMu, normSigma)
-
-#     trainTransform = transforms.Compose([
-#         transforms.ToTensor(),
-#         normTransform
-#     ])
-#     testTransform = transforms.Compose([
-#         transforms.ToTensor(),
-#         normTransform
-#     ])
-#     if ct_targets == nodule_masks:
-#         masks = lung_masks
-#     else:
-#         masks = None
-
-#     if args.inference != '':
-#         if not args.resume:
-#             print("args.resume must be set to do inference")
-#             exit(1)
-#         kwargs = {'num_workers': 1} if args.cuda else {}
-#         src = args.inference
-#         dst = args.save
-#         inference_batch_size = args.ngpu
-#         root = os.path.dirname(src)
-#         images = os.path.basename(src)
-#         dataset = dset.LUNA16(root=root, images=images, transform=testTransform, split=target_split, mode="infer")
-#         loader = DataLoader(dataset, batch_size=inference_batch_size, shuffle=False, collate_fn=noop, **kwargs)
-#         inference(args, loader, model, trainTransform)
-#         return
 
 #     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
     print("loading training set")
@@ -345,13 +259,7 @@ def main():
         class_weights = class_weights.cuda()
     print('Setting Class Weights')
     
-#     target_mean = trainSet.target_mean()
-#     bg_weight = target_mean / (1. + target_mean)
-#     fg_weight = 1. - bg_weight
-#     print(bg_weight)
-#     class_weights = torch.FloatTensor([bg_weight, fg_weight])
-#     if args.cuda:
-#         class_weights = class_weights.cuda()
+
 
     print("Setting the Optimization Algorithm.")
     if opt_algo == 'sgd':
