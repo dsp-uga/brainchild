@@ -1,0 +1,396 @@
+
+# coding: utf-8
+
+# In[119]:
+
+
+import numpy as np
+
+import torch
+import torch.nn as nn
+import torch.nn.init as init
+import torch.optim as optim
+import torch.nn.functional as F
+from torch.autograd import Variable
+
+import torchbiomed.datasets as dset
+import torchbiomed.transforms as biotransforms
+import torchbiomed.loss as bioloss
+import torchbiomed.utils as utils
+
+import os
+import sys
+import math
+import time
+import setproctitle
+
+import loader
+import vnet
+
+
+# In[101]:
+
+
+#Initailize the weights 
+#Check the documentation for the kaiming_normal for further information.
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv3d') != -1:
+        nn.init.kaiming_normal(m.weight)
+        m.bias.data.zero_()
+
+
+# In[102]:
+
+
+#Generate String to save the model with the time stamp.
+def datestr():
+    now = time.gmtime()
+    return '{}{:02}{:02}_{:02}{:02}'.format(now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min)
+
+
+# In[116]:
+
+
+#Loads the data.
+def load_dataset():
+    data_dir = '../data/Mindboggle'
+    data = loader.load_dataset(data_dir, dataset='Mindboggle', goal='register')
+#     batch = next(data)
+#     return batch
+    return data
+
+
+# In[104]:
+
+
+#Adjust the optimization Parameters based on the number of the epochs.
+def adjust_opt(optAlg, optimizer, epoch):
+    if optAlg == 'sgd':
+        if epoch < 150:
+            lr = 1e-1
+        elif epoch == 150:
+            lr = 1e-2
+        elif epoch == 225:
+            lr = 1e-3
+        else:
+            return
+
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+
+
+# In[105]:
+
+
+#Train the model and save it.
+def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
+    model.train()
+    nProcessed = 0
+    nTrain = len(trainLoader.dataset)
+    for batch_idx, (data, target) in enumerate(trainLoader):
+        if is_cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        optimizer.zero_grad()
+        output = model(data)
+        target = target.view(target.numel())
+        loss = F.nll_loss(output, target, weight=weights)
+        dice_loss = bioloss.dice_error(output, target)
+        # make_graph.save('/tmp/t.dot', loss.creator); assert(False)
+        loss.backward()
+        optimizer.step()
+        nProcessed += len(data)
+        pred = output.data.max(1)[1]  # get the index of the max log-probability
+        incorrect = pred.ne(target.data).cpu().sum()
+        err = 100.*incorrect/target.numel()
+        partialEpoch = epoch + batch_idx / len(trainLoader) - 1
+        print('Train Epoch: {:.2f} [{}/{} ({:.0f}%)]\tLoss: {:.4f}\tError: {:.3f}\t Dice: {:.6f}'.format(
+            partialEpoch, nProcessed, nTrain, 100. * batch_idx / len(trainLoader),
+            loss.data[0], err, dice_loss))
+
+        trainF.write('{},{},{}\n'.format(partialEpoch, loss.data[0], err))
+        trainF.flush()
+    
+
+
+# In[106]:
+
+
+#Test data and return error.
+def test_nll(is_cuda, epoch, model, testLoader, optimizer, testF, weights):
+    model.eval()
+    test_loss = 0
+    dice_loss = 0
+    incorrect = 0
+    numel = 0
+    for data, target in testLoader:
+        if is_cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data, volatile=True), Variable(target)
+        target = target.view(target.numel())
+        numel += target.numel()
+        output = model(data)
+        test_loss += F.nll_loss(output, target, weight=weights).data[0]
+        dice_loss += bioloss.dice_error(output, target)
+        pred = output.data.max(1)[1]  # get the index of the max log-probability
+        incorrect += pred.ne(target.data).cpu().sum()
+
+    test_loss /= len(testLoader)  # loss function already averages over batch size
+    dice_loss /= len(testLoader)
+    err = 100.*incorrect/numel
+    print('\nTest set: Average loss: {:.4f}, Error: {}/{} ({:.3f}%) Dice: {:.6f}\n'.format(
+        test_loss, incorrect, numel, err, dice_loss))
+
+    testF.write('{},{},{}\n'.format(epoch, test_loss, err))
+    testF.flush()
+    return err
+
+
+# In[107]:
+
+
+#Save check point on the disk.
+def save_checkpoint(state, is_best, path, prefix, filename='checkpoint.pth.tar'):
+    prefix_save = os.path.join(path, prefix)
+    name = prefix_save + '_' + filename
+    torch.save(state, name)
+    if is_best:
+        shutil.copyfile(name, prefix_save + '_model_best.pth.tar')
+
+
+# In[108]:
+
+
+def inference(args, loader, model, transforms):
+    src = args.inference
+    dst = args.save
+
+    model.eval()
+    nvols = reduce(operator.mul, target_split, 1)
+    # assume single GPU / batch size 1
+    for data in loader:
+        data, series, origin, spacing = data[0]
+        shape = data.size()
+        # convert names to batch tensor
+        if args.cuda:
+            data.pin_memory()
+            data = data.cuda()
+        data = Variable(data, volatile=True)
+        output = model(data)
+        _, output = output.max(1)
+        output = output.view(shape)
+        output = output.cpu()
+        # merge subvolumes and save
+        results = output.chunk(nvols)
+        results = map(lambda var : torch.squeeze(var.data).numpy().astype(np.int16), results)
+        volume = utils.merge_image([*results], target_split)
+        print("save {}".format(series))
+        utils.save_updated_image(volume, os.path.join(dst, series + ".mhd"), origin, spacing)
+
+
+# In[109]:
+
+
+# performing post-train inference:
+# train.py --resume <model checkpoint> --i <input directory (*.mhd)> --save <output directory>
+
+def noop(x):
+    return x
+
+
+# In[117]:
+
+
+def main():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('--batchSz', type=int, default=10)
+#     parser.add_argument('--dice', action='store_true')
+#     parser.add_argument('--ngpu', type=int, default=1)
+#     parser.add_argument('--nEpochs', type=int, default=300)
+#     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+#                         help='manual epoch number (useful on restarts)')
+#     parser.add_argument('--resume', default='', type=str, metavar='PATH',
+#                         help='path to latest checkpoint (default: none)')
+#     parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
+#                         help='evaluate model on validation set')
+#     parser.add_argument('-i', '--inference', default='', type=str, metavar='PATH',
+#                         help='run inference on data set and save results')
+
+#     # 1e-8 works well for lung masks but seems to prevent
+#     # rapid learning for nodule masks
+#     parser.add_argument('--weight-decay', '--wd', default=1e-8, type=float,
+#                         metavar='W', help='weight decay (default: 1e-8)')
+#     parser.add_argument('--no-cuda', action='store_true')
+#     parser.add_argument('--save')
+#     parser.add_argument('--seed', type=int, default=1)
+#     parser.add_argument('--opt', type=str, default='adam',
+#                         choices=('sgd', 'adam', 'rmsprop'))
+#     args = parser.parse_args()
+    best_prec1 = 100.
+    seed = 100
+    
+    is_cuda = True
+    is_cuda = is_cuda and torch.cuda.is_available()
+   
+    nGPUs = 1
+    unit_batch_size = 10
+
+    save_model_path = 'work/vnet.base.{}'.format(datestr())
+    nll = True #Softmax function (regular or logarithmic)
+    weight_decay = 0 #weight decay TODO
+    is_resume = False
+    opt_algo = 'sgd'
+    print('Parameters Initialized.')
+    
+    #Set Parameters.
+    setproctitle.setproctitle(save_model_path)
+    #Create directories if the path does not exist.
+    if os.path.exists(save_model_path):
+        shutil.rmtree(save_model_path)
+    os.makedirs(save_model_path, exist_ok=True)
+    
+    torch.manual_seed(seed)
+    if is_cuda:
+        torch.cuda.manual_seed(args.seed)
+    print('Process Started with Seed,',seed)
+    
+    print("VNET Config.")
+    model = vnet.VNet(elu=False, nll=nll)
+    batch_size = nGPUs*unit_batch_size
+    gpu_ids = range(nGPUs)
+    model = nn.parallel.DataParallel(model, device_ids=gpu_ids)
+
+    #Check if the model is already there and needed to be trained for another set of data.
+    #If not create a new model.
+    if is_resume:
+        exit()
+#         if os.path.isfile(args.resume):
+#             print("=> loading checkpoint '{}'".format(args.resume))
+#             checkpoint = torch.load(args.resume)
+#             args.start_epoch = checkpoint['epoch']
+#             best_prec1 = checkpoint['best_prec1']
+#             model.load_state_dict(checkpoint['state_dict'])
+#             print("=> loaded checkpoint '{}' (epoch {})"
+#                   .format(args.evaluate, checkpoint['epoch']))
+#         else:
+#             print("=> no checkpoint found at '{}'".format(args.resume))
+    else:
+        model.apply(weights_init)
+
+#  For now it is useless as it is not used as the softmax would be just used without any log function.
+
+#     if nll:
+#         train = train_nll
+#         test = test_nll
+#         class_balance = True
+#     else:
+#         train = train_dice
+#         test = test_dice
+#         class_balance = False
+
+    print('  + Number of params: {}'.format(
+        sum([p.data.nelement() for p in model.parameters()])))
+    if is_cuda:
+        model = model.cuda()
+
+
+
+
+#     # LUNA16 dataset isotropically scaled to 2.5mm^3
+#     # and then truncated or zero-padded to 160x128x160
+#     normMu = [-642.794]
+#     normSigma = [459.512]
+#     normTransform = transforms.Normalize(normMu, normSigma)
+
+#     trainTransform = transforms.Compose([
+#         transforms.ToTensor(),
+#         normTransform
+#     ])
+#     testTransform = transforms.Compose([
+#         transforms.ToTensor(),
+#         normTransform
+#     ])
+#     if ct_targets == nodule_masks:
+#         masks = lung_masks
+#     else:
+#         masks = None
+
+#     if args.inference != '':
+#         if not args.resume:
+#             print("args.resume must be set to do inference")
+#             exit(1)
+#         kwargs = {'num_workers': 1} if args.cuda else {}
+#         src = args.inference
+#         dst = args.save
+#         inference_batch_size = args.ngpu
+#         root = os.path.dirname(src)
+#         images = os.path.basename(src)
+#         dataset = dset.LUNA16(root=root, images=images, transform=testTransform, split=target_split, mode="infer")
+#         loader = DataLoader(dataset, batch_size=inference_batch_size, shuffle=False, collate_fn=noop, **kwargs)
+#         inference(args, loader, model, trainTransform)
+#         return
+
+#     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+    print("loading training set")
+    trainLoader = load_dataset()
+    print("loading test set")
+    testLoader = load_dataset()
+    
+    #Setting up the class weight.For now the hard coding. 
+    bg_weight = 0.9
+    fg_weight = 0.1
+    class_weights = torch.FloatTensor([bg_weight, fg_weight])
+    if is_cuda:
+        class_weights = class_weights.cuda()
+    print('Setting Class Weights')
+    
+#     target_mean = trainSet.target_mean()
+#     bg_weight = target_mean / (1. + target_mean)
+#     fg_weight = 1. - bg_weight
+#     print(bg_weight)
+#     class_weights = torch.FloatTensor([bg_weight, fg_weight])
+#     if args.cuda:
+#         class_weights = class_weights.cuda()
+
+    print("Setting the Optimization Algorithm.")
+    if opt_algo == 'sgd':
+        optimizer = optim.SGD(model.parameters(), lr=1e-1,
+                              momentum=0.99, weight_decay=weight_decay)
+    elif opt_algo == 'adam':
+        optimizer = optim.Adam(model.parameters(), weight_decay=weight_decay)
+    elif opt_algo == 'rmsprop':
+        optimizer = optim.RMSprop(model.parameters(), weight_decay=weight_decay)
+
+#Writing things to the file.
+    trainF = open(os.path.join(save_model_path, 'train.csv'), 'w')
+    testF = open(os.path.join(save_model_path, 'test.csv'), 'w')
+    err_best = 100.
+    total_epoch = 10
+    for epoch in range(1, total_epoch + 1):
+        print(epoch)
+        #Set Optimization parameters.
+        adjust_opt(opt_algo, optimizer, epoch)
+        train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, class_weights)
+        err = test_nll(is_cuda, epoch, model, testLoader, optimizer, testF, class_weights)
+        is_best = False
+        if err < best_prec1:
+            is_best = True
+            best_prec1 = err
+        save_checkpoint({'epoch': epoch,
+                         'state_dict': model.state_dict(),
+                         'best_prec1': best_prec1},
+                        is_best, save_model_path, "vnet")
+        os.system('./plot.py {} {} &'.format(len(trainLoader),save_model_path))
+
+    trainF.close()
+    testF.close()
+    print('Done.')
+
+
+# In[120]:
+
+
+if __name__ == '__main__':
+    main()
+

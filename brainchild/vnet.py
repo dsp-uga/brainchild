@@ -184,12 +184,16 @@ class OutputTransition(nn.Module):
 class VNet(nn.Module):
     '''
         Implements V-Net Configuration as described in the 
+	
+	Args: 
+	 elu : if true selects the ELU as the network function and if false uses the PRelu.
+	 nll : If to use the logarithmic softmax output or not. 
         
         Milletari, Fausto, Nassir Navab, and Seyed-Ahmad Ahmadi. 
         "V-net: Fully convolutional neural networks for volumetric medical image segmentation." 
         3D Vision (3DV), 2016 Fourth International Conference on. IEEE, 2016.
     '''
-    def __init__(self,elu=False,nll=True):
+    def __init__(self,elu=False,nll=False):
         super(VNet, self).__init__()
         self.in_tr = InputTransition(16, elu)
         self.down_tr32 = DownTransition(16, 1, elu)
