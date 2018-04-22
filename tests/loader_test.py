@@ -2,7 +2,7 @@ import brainchild.loader
 
 def test_mindboggle_dataset(capsys):
     data_dir = 'data/Mindboggle'
-    ds = brainchild.loader.MindboggleData(data_dir, goal='register')
+    ds = brainchild.loader.MindboggleData(data_dir, goal='segment')
     x, y = ds[1]
     with capsys.disabled():
         print('dtype')
@@ -19,7 +19,7 @@ def test_mindboggle_dataset(capsys):
 #         print(ds[0])
 def test_load_dataset(capsys):
     data_dir = './data/Mindboggle'
-    loader = iter(brainchild.loader.load_dataset(data_dir, dataset='Mindboggle', goal='register'))
+    loader = iter(brainchild.loader.load_dataset(data_dir, dataset='Mindboggle', goal='segment'))
     batch = next(loader)
     x, y = batch
     with capsys.disabled():
