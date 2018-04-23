@@ -48,7 +48,7 @@ def zero_pad_array(array, d, w, h):
         w (int): Size of this function output in second dimension
         h (int): Size of this function output in third dimension
     '''
-    c, x, y, z = array.shape
+    x, y, z = array.shape
 
     pad_x1= 0
     pad_x2= 0
@@ -257,7 +257,7 @@ def load_dataset(data_dir, dataset, goal, **kwargs):
     Returns (torch.utils.data.DataLoader):
         A DataLoader that iterates over batches of the dataset for one epoch.
     '''
-    kwargs.setdefault('batch_size', 4)
+    kwargs.setdefault('batch_size', 1)
     kwargs.setdefault('shuffle', True)
     kwargs.setdefault('num_workers', 4)
     kwargs.setdefault('pin_memory', torch.cuda.is_available())
