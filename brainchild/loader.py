@@ -35,7 +35,7 @@ class MindboggleData(Dataset):
         x = torch.from_numpy(x)
         trgt_img = nibabel.load(meta['label'])
         y = trgt_img.get_fdata(caching='unchanged')
-        y = zero_pad_array(x, 256, 256,  256)
+        y = zero_pad_array(y, 256, 256,  256)
         y = np.reshape(y, (1,256,256,256))
         y = torch.from_numpy(y)
         return x, y

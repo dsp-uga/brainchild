@@ -27,4 +27,4 @@ class reg_net(N.module):
 class conv_block(N.module):
 
     def __init__(self, c_in, c_out, k, s):
-        self. c
+        self.conv1 = 
