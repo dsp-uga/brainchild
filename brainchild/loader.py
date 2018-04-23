@@ -33,6 +33,7 @@ class MindboggleData(Dataset):
         x = zero_pad_array(x, 256, 256, 256)
         x = np.reshape(x,(1,256,256,256))
         x = torch.from_numpy(x)
+        
         trgt_img = nibabel.load(meta['label'])
         y = trgt_img.get_fdata(caching='unchanged')
         y = zero_pad_array(y, 256, 256, 256)
@@ -48,7 +49,7 @@ def zero_pad_array(array, d, w, h):
         w (int): Size of this function output in second dimension
         h (int): Size of this function output in third dimension
     '''
-    c, x, y, z = array.shape
+    x, y, z = array.shape
 
     pad_x1= 0
     pad_x2= 0
