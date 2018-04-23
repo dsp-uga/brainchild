@@ -146,34 +146,7 @@ def save_checkpoint(state, is_best, path, prefix, filename='checkpoint.pth.tar')
         shutil.copyfile(name, prefix_save + '_model_best.pth.tar')
 
 
-# In[108]:
 
-
-def inference(args, loader, model, transforms):
-    src = args.inference
-    dst = args.save
-
-    model.eval()
-    nvols = reduce(operator.mul, target_split, 1)
-    # assume single GPU / batch size 1
-    for data in loader:
-        data, series, origin, spacing = data[0]
-        shape = data.size()
-        # convert names to batch tensor
-        if args.cuda:
-            data.pin_memory()
-            data = data.cuda()
-        data = Variable(data, volatile=True)
-        output = model(data)
-        _, output = output.max(1)
-        output = output.view(shape)
-        output = output.cpu()
-        # merge subvolumes and save
-        results = output.chunk(nvols)
-        results = map(lambda var : torch.squeeze(var.data).numpy().astype(np.int16), results)
-        volume = utils.merge_image([*results], target_split)
-        print("save {}".format(series))
-        utils.save_updated_image(volume, os.path.join(dst, series + ".mhd"), origin, spacing)
 
 
 # In[109]:
