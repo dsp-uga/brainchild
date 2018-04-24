@@ -31,10 +31,11 @@ class ContBatchNorm3d(nn.modules.batchnorm._BatchNorm):
         if input.dim() != 5:
             raise ValueError('expected 5D input (got {}D input)'
                              .format(input.dim()))
-        super(ContBatchNorm3d, self)._check_input_dim(input)
+       # super(ContBatchNorm3d, self)._check_input_dim(input)
 
     def forward(self, input):
         self._check_input_dim(input)
+        print('Check is OK.')
         return F.batch_norm(
             input, self.running_mean, self.running_var, self.weight, self.bias,
             True, self.momentum, self.eps)
@@ -52,7 +53,13 @@ class LUConv(nn.Module):
         self.bn1 = ContBatchNorm3d(nchan)
 
     def forward(self, x):
-        out = self.relu1(self.bn1(self.conv1(x)))
+        print('LU Conv.:',x.size())
+        out = self.conv1(x)
+        print('LU Conv: after conv1:',out.size())
+        out = self.bn1(out)
+        print('Lu Conv: after bn1:', out.size())
+        out = self.relu1(out)
+        print('LU Output after Relu1:', out.size())
         return out
 
 
@@ -61,9 +68,12 @@ def _make_nConv(nchan, depth, elu):
      This function is applied for the applying n convolution on the input data, which 
      would produce output with n-channel.
     '''
+    print('Channles:', nchan)
+    print('depth:',depth)
     layers = []
     for _ in range(depth):
         layers.append(LUConv(nchan, elu))
+        print('Layers Size:', len(layers))
     return nn.Sequential(*layers)
 
 
@@ -81,12 +91,19 @@ class InputTransition(nn.Module):
         self.relu1 = ELUCons(elu, 16)
 
     def forward(self, x):
+        print('Inside Input Transition:',x.size())
         # do we want a PRELU here as well?
         out = self.bn1(self.conv1(x))
+        print('Printing the current output of Batch Normalization1:',out.size())
         # split input in to 16 channels
-        x16 = torch.cat((x, x, x, x, x, x, x, x,
-                         x, x, x, x, x, x, x, x), 0)
-        out = self.relu1(torch.add(out, x16))
+       # x16 = torch.cat((x, x, x, x, x, x, x, x,
+       #                  x, x, x, x, x, x, x, x), 1)
+       # print('Converting into 16 channles',x16.size())
+       # x16_out = torch.add(out,x16)
+        x16_out = out + x
+        print('Sum:', x16_out.size())
+        out = self.relu1(x16_out)
+        print('After Relu1:',out.size())
         return out
 
 
@@ -110,10 +127,15 @@ class DownTransition(nn.Module):
         self.ops = _make_nConv(outChans, nConvs, elu)
 
     def forward(self, x):
+        print('Input:', x.size())
         down = self.relu1(self.bn1(self.down_conv(x)))
+        print('Down:', down.size())
         out = self.do1(down)
+        print('After Do Nothing:', out.size())
         out = self.ops(out)
+        print('After Optimization:', out.size())
         out = self.relu2(torch.add(out, down))
+        print('After RELU:',out.size())
         return out
 
 
@@ -207,6 +229,7 @@ class VNet(nn.Module):
         self.out_tr = OutputTransition(32, elu, nll)
     
     def forward(self, x):
+        print('Inside Modelling')
         out16 = self.in_tr(x)
         out32 = self.down_tr32(out16)
         out64 = self.down_tr64(out32)

@@ -7,8 +7,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-import torchbiomed.datasets as dset
-import torchbiomed.transforms as biotransforms
+#import torchbiomed.datasets as dset
+#import torchbiomed.transforms as biotransforms
 import torchbiomed.loss as bioloss
 import torchbiomed.utils as utils
 
@@ -72,15 +72,20 @@ def adjust_opt(optAlg, optimizer, epoch):
 
 #Train the model and save it.
 def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
+    print('Training Model')
     model.train()
     nProcessed = 0
     nTrain = len(trainLoader.dataset)
+    print('Training Examples:',nTrain)
     for batch_idx, (data, target) in enumerate(trainLoader):
         if is_cuda:
             data, target = data.cuda(), target.cuda()
+        print('Setting Variables')
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
+        print('Train Model')
         output = model(data)
+        print('Get the trarget')
         target = target.view(target.numel())
         loss = F.nll_loss(output, target, weight=weights)
         dice_loss = bioloss.dice_error(output, target)
@@ -90,8 +95,8 @@ def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
         nProcessed += len(data)
         pred = output.data.max(1)[1]  # get the index of the max log-probability
         incorrect = pred.ne(target.data).cpu().sum()
-        err = 100.*incorrect/target.numel()
-        partialEpoch = epoch + batch_idx / len(trainLoader) - 1
+        err = 100.*float(incorrect)/target.numel()
+        partialEpoch = int(epoch) + int(batch_idx) / len(trainLoader) - 1
         print('Train Epoch: {:.2f} [{}/{} ({:.0f}%)]\tLoss: {:.4f}\tError: {:.3f}\t Dice: {:.6f}'.format(
             partialEpoch, nProcessed, nTrain, 100. * batch_idx / len(trainLoader),
             loss.data[0], err, dice_loss))
@@ -106,14 +111,18 @@ def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
 
 #Test data and return error.
 def test_nll(is_cuda, epoch, model, testLoader, optimizer, testF, weights):
+    print('Model Evaluation')
     model.eval()
     test_loss = 0
     dice_loss = 0
     incorrect = 0
     numel = 0
+    print('Initiate Parameter Settings.')
     for data, target in testLoader:
+        print('Inside Loop')
         if is_cuda:
             data, target = data.cuda(), target.cuda()
+        print('Setting Variables')
         data, target = Variable(data, volatile=True), Variable(target)
         target = target.view(target.numel())
         numel += target.numel()
@@ -161,7 +170,7 @@ def main():
     best_prec1 = 100.
     seed = 100
     
-    is_cuda = True
+    is_cuda = False
     is_cuda = is_cuda and torch.cuda.is_available()
    
     nGPUs = 1
@@ -187,7 +196,8 @@ def main():
     print('Process Started with Seed,',seed)
     
     print("VNET Config.")
-    model = vnet.VNet(elu=False, nll=nll)
+    model = vnet.VNet(elu=True, nll=nll)
+    model = model.double()
     batch_size = nGPUs*unit_batch_size
     gpu_ids = range(nGPUs)
     model = nn.parallel.DataParallel(model, device_ids=gpu_ids)
@@ -227,7 +237,7 @@ def main():
     #Setting up the class weight.For now the hard coding. 
     bg_weight = 0.9
     fg_weight = 0.1
-    class_weights = torch.FloatTensor([bg_weight, fg_weight])
+    class_weights = torch.DoubleTensor([bg_weight, fg_weight])
     if is_cuda:
         class_weights = class_weights.cuda()
     print('Setting Class Weights')
@@ -248,11 +258,14 @@ def main():
     testF = open(os.path.join(save_model_path, 'test.csv'), 'w')
     err_best = 100.
     total_epoch = 10
+    print('Open Files for saving records')
     for epoch in range(1, total_epoch + 1):
         print(epoch)
         #Set Optimization parameters.
         adjust_opt(opt_algo, optimizer, epoch)
+        print('Adjust the Parameters')
         train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, class_weights)
+        print('Training Done')
         err = test_nll(is_cuda, epoch, model, testLoader, optimizer, testF, class_weights)
         is_best = False
         if err < best_prec1:
