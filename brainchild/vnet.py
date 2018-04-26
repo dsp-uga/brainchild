@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import gc
 
 def passthrough(x, **kwargs):
     '''
@@ -96,11 +96,11 @@ class InputTransition(nn.Module):
         out = self.bn1(self.conv1(x))
         print('Printing the current output of Batch Normalization1:',out.size())
         # split input in to 16 channels
-       # x16 = torch.cat((x, x, x, x, x, x, x, x,
-       #                  x, x, x, x, x, x, x, x), 1)
-       # print('Converting into 16 channles',x16.size())
-       # x16_out = torch.add(out,x16)
-        x16_out = out + x
+        x16 = torch.cat((x, x, x, x, x, x, x, x,
+                         x, x, x, x, x, x, x, x), 1)
+        print('Converting into 16 channles',x16.size())
+        x16_out = torch.add(out,x16)
+       # x16_out = out + x
         print('Sum:', x16_out.size())
         out = self.relu1(x16_out)
         print('After Relu1:',out.size())
@@ -163,7 +163,10 @@ class UpTransition(nn.Module):
         out = self.do1(x)
         skipxdo = self.do2(skipx)
         out = self.relu1(self.bn1(self.up_conv(out)))
+        print('Uptransition Output of Relu:', out.size())
+        print('The features of the DownTransition:',skipxdo.size())
         xcat = torch.cat((out, skipxdo), 1)
+        print('Contactanation:',xcat.size())
         out = self.ops(xcat)
         out = self.relu2(torch.add(out, xcat))
         return out
@@ -219,25 +222,44 @@ class VNet(nn.Module):
         super(VNet, self).__init__()
         self.in_tr = InputTransition(16, elu)
         self.down_tr32 = DownTransition(16, 1, elu)
-        self.down_tr64 = DownTransition(32, 2, elu)
-        self.down_tr128 = DownTransition(64, 3, elu)
-        self.down_tr256 = DownTransition(128, 3, elu)
-        self.up_tr256 = UpTransition(256, 256, 3, elu)
-        self.up_tr128 = UpTransition(256, 128, 3, elu)
-        self.up_tr64 = UpTransition(128, 64, 3, elu)
-        self.up_tr32 = UpTransition(64, 32, 2, elu)
+        self.down_tr64 = DownTransition(32, 2, elu,dropout=True)
+        self.down_tr128 = DownTransition(64, 2, elu,dropout=True)
+        self.down_tr256 = DownTransition(128, 2, elu,dropout=True)
+        self.up_tr256 = UpTransition(256, 256, 2, elu,dropout=True)
+        self.up_tr128 = UpTransition(256, 128, 2, elu,dropout=True)
+        self.up_tr64 = UpTransition(128, 64, 1, elu,dropout=True)
+        self.up_tr32 = UpTransition(64, 32, 1, elu)
         self.out_tr = OutputTransition(32, elu, nll)
     
     def forward(self, x):
         print('Inside Modelling')
         out16 = self.in_tr(x)
+        gc.collect()
+        print('L1')
         out32 = self.down_tr32(out16)
+        gc.collect()
+        print('D1')
         out64 = self.down_tr64(out32)
-        out128 = self.down_tr128(out64)
-        out256 = self.down_tr256(out128)
-        out = self.up_tr256(out256, out128)
+        gc.collect()
+        print('D2')
+        out128 = self.down_tr128(out64) 
+        gc.collect()
+        print('D3')
+        out256 = self.down_tr256(out128) 
+        gc.collect()
+        print('D4')
+        out = self.up_tr256(out256,out128)
+        gc.collect()
+        print('U1')
         out = self.up_tr128(out, out64)
+        gc.collect()
+        print('U2')
         out = self.up_tr64(out, out32)
+        gc.collect()
+        print('U3')
         out = self.up_tr32(out, out16)
+        gc.collect()
+        print('U4')
         out = self.out_tr(out)
+        print('Final')
         return out

@@ -78,9 +78,16 @@ def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
     nTrain = len(trainLoader.dataset)
     print('Training Examples:',nTrain)
     for batch_idx, (data, target) in enumerate(trainLoader):
+        #Resizing the data according to the need.
+        data = data.view(-1,1,128,128,64)
+        data = torch.chunk(data,16,0)[0]
+        target = target.view(-1,1,128,128,64)
+        target = torch.chunk(target,16,0)[0]
         if is_cuda:
             data, target = data.cuda(), target.cuda()
-        print('Setting Variables')
+        #print('Setting Variables')
+        print('Data:',data.size())
+        print('Target:',target.size())
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
         print('Train Model')
@@ -173,6 +180,7 @@ def main():
     is_cuda = False
     is_cuda = is_cuda and torch.cuda.is_available()
    
+    print('GPU ENABLED:',is_cuda)
     nGPUs = 1
     unit_batch_size = 10
 
@@ -200,7 +208,7 @@ def main():
     model = model.double()
     batch_size = nGPUs*unit_batch_size
     gpu_ids = range(nGPUs)
-    model = nn.parallel.DataParallel(model, device_ids=gpu_ids)
+   # model = nn.parallel.DataParallel(model, device_ids=gpu_ids)
 
     #Check if the model is already there and needed to be trained for another set of data.
     #If not create a new model.
