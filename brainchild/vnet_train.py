@@ -69,7 +69,7 @@ def load_dataset():
 	 Hard Coding: For this project the data is Mindboggle only, so the values are hard coded.
 	"""
     data_dir = '../data/Mindboggle'
-    data = loader.load_dataset(data_dir, dataset='Mindboggle', goal='segmentation')
+    data = loader.load_dataset(data_dir, dataset='Mindboggle', goal='segment')
     return data
 
 
