@@ -45,22 +45,31 @@ echo "export PYSPARK_PYTHON=$CONDA_PREFIX/bin/python" | tee -a \
 # Install packages and updates
 # --------------------------------------------------
 
-echo "==> Updating the operating system"
-export DEBIAN_FRONTEND=noninteractive
-apt-get -y update
-apt-get -y upgrade
+# echo "==> Updating the operating system"
+# export DEBIAN_FRONTEND=noninteractive
+# apt-get -y update
+# apt-get -y upgrade
 
 echo "==> Installing conda packages"
 conda config --set always_yes true
 conda config --set changeps1 false
 conda install -q \
-  numpy scipy scikit-learn\
+  numpy scipy scikit-learn pandas\
   conda-forge::opencv\
   pytorch::pytorch
 
 echo "--> Install pip packages"
 pip install \
   nibabel
+
+echo "--> Add the gcsfuse distribution URL as a package source and import its public key:"
+export GCSFUSE_REPO=gcsfuse-`lsb_release -c -s`
+echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main" | sudo tee /etc/apt/sources.list.d/gcsfuse.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+
+echo "--> Update the list of packages available and install gcsfuse."
+sudo apt-get update
+sudo apt-get install gcsfuse --yes
 
 # Install GPU drivers
 # --------------------------------------------------
@@ -128,3 +137,7 @@ then
 else
 	echo "--> No NVIDIA GPU detected"
 fi
+
+# echo "==> Mount the bucket with data"
+# nohup gcsfuse --implicit-dirs brainchild /mnt
+# echo
