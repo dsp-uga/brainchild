@@ -1,3 +1,9 @@
+"""
+This python files actually implements the vnet architecture using the pytorch api. 
+References: 
+Actual Implementation: https://github.com/mattmacy/vnet.pytorch
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

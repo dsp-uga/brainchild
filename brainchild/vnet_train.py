@@ -1,3 +1,18 @@
+"""
+
+This code trains the V-Net model from the given dataset. The code inturn calls
+the vnet.py method to 
+
+Example:
+    How to run::
+        $ python vnet_train.py
+		
+References: 
+Actual Implementation: https://github.com/mattmacy/vnet.pytorch
+https://github.com/wildphoton/torchbiomed
+All the reference of pytorch from : http://pytorch.org/
+"""
+
 import numpy as np
 
 import torch
@@ -7,8 +22,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-#import torchbiomed.datasets as dset
-#import torchbiomed.transforms as biotransforms
 import torchbiomed.loss as bioloss
 import torchbiomed.utils as utils
 
@@ -24,9 +37,14 @@ import vnet
 
 
 
-#Initailize the weights 
-#Check the documentation for the kaiming_normal for further information.
+
 def weights_init(m):
+    """
+	  Initailize the weights of the network of the given model class. 
+	  Check the pytorch documentation for the kaiming_normal for further information.
+	  Args: 
+	    m is the model object.
+	"""
     classname = m.__class__.__name__
     if classname.find('Conv3d') != -1:
         nn.init.kaiming_normal(m.weight)
@@ -34,26 +52,39 @@ def weights_init(m):
 
 
 
-#Generate String to save the model with the time stamp.
+
 def datestr():
+    """
+		Generate String to save the model with the time stamp.
+	"""
     now = time.gmtime()
     return '{}{:02}{:02}_{:02}{:02}'.format(now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min)
 
 
 
-#Loads the data.
+
 def load_dataset():
+    """
+	 Loads the data using the DataLoader implementation in loader.py.
+	 Hard Coding: For this project the data is Mindboggle only, so the values are hard coded.
+	"""
     data_dir = '../data/Mindboggle'
-    data = loader.load_dataset(data_dir, dataset='Mindboggle', goal='register')
-#     batch = next(data)
-#     return batch
+    data = loader.load_dataset(data_dir, dataset='Mindboggle', goal='segmentation')
     return data
 
 
 
 
-#Adjust the optimization Parameters based on the number of the epochs.
+
 def adjust_opt(optAlg, optimizer, epoch):
+    """
+		Adjusting the optimization Parameters based on the number of the epochs.
+		Keeping from the original implementation, as it is meaningful. 
+		Args:
+		  optAlg is the optimization algorithm. 
+		  optimizer is the optimizer object. 
+		  epoch is the total number of epoch in the network.
+	"""
     if optAlg == 'sgd':
         if epoch < 150:
             lr = 1e-1
@@ -68,35 +99,50 @@ def adjust_opt(optAlg, optimizer, epoch):
             param_group['lr'] = lr
 
 
-
-
-#Train the model and save it.
 def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
+    """
+		This method trains the model using the vnet.py file and saves the model on the disk.
+		Args: 
+		  is_cuda Is using the GPU?
+		  epoch is the total number of epoch going to be used in to train network.
+		  model is the vnet model object.
+		  trainLoader is the DataLoader object for the current data. 
+		  trainF is for saving the intermediate model.
+		  weights are the class distribution.
+
+	"""
     print('Training Model')
+
     model.train()
     nProcessed = 0
     nTrain = len(trainLoader.dataset)
+
     print('Training Examples:',nTrain)
     for batch_idx, (data, target) in enumerate(trainLoader):
-        #Resizing the data according to the need.
+
+     	#Resizing the data according to the need.
+		#Hard-coded value for setting the input to (1,1,128,128,64) channel.
         data = data.view(-1,1,128,128,64)
         data = torch.chunk(data,16,0)[0]
         target = target.view(-1,1,128,128,64)
         target = torch.chunk(target,16,0)[0]
-        if is_cuda:
+     
+	 if is_cuda:
             data, target = data.cuda(), target.cuda()
-        #print('Setting Variables')
+
         print('Data:',data.size())
         print('Target:',target.size())
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
         print('Train Model')
-        output = model(data)
+        
+		output = model(data)
         print('Get the trarget')
-        target = target.view(target.numel())
+        
+		target = target.view(target.numel())
         loss = F.nll_loss(output, target, weight=weights)
         dice_loss = bioloss.dice_error(output, target)
-        # make_graph.save('/tmp/t.dot', loss.creator); assert(False)
+        
         loss.backward()
         optimizer.step()
         nProcessed += len(data)
@@ -113,11 +159,19 @@ def train_nll(is_cuda, epoch, model, trainLoader, optimizer, trainF, weights):
     
 
 
-# In[106]:
 
-
-#Test data and return error.
 def test_nll(is_cuda, epoch, model, testLoader, optimizer, testF, weights):
+	"""
+		This method tests the trained model.
+		Args: 
+		  is_cuda Is using the GPU?
+		  epoch is the total number of epoch going to be used in to train network.
+		  model is the vnet model object.
+		  testLoader is the DataLoader object for the current test data. 
+		  optimizer is the Optmizer object.
+		  testF is for saving the intermediate model.
+		  weights are the class distribution.
+	"""
     print('Model Evaluation')
     model.eval()
     test_loss = 0
@@ -150,11 +204,16 @@ def test_nll(is_cuda, epoch, model, testLoader, optimizer, testF, weights):
     return err
 
 
-# In[107]:
-
-
-#Save check point on the disk.
 def save_checkpoint(state, is_best, path, prefix, filename='checkpoint.pth.tar'):
+    """
+	  This method saves the checkpoint of the model on the disk after each epoch.
+	  Args:
+	  state is the current state of the model.
+	  is_best is the flag to check if the model is best or not. 
+	  path is the path to save the model. 
+	  prefix is the path prefix.
+	  filename is the name of the saved file.
+	"""
     prefix_save = os.path.join(path, prefix)
     name = prefix_save + '_' + filename
     torch.save(state, name)
@@ -165,25 +224,25 @@ def save_checkpoint(state, is_best, path, prefix, filename='checkpoint.pth.tar')
 
 
 
-# In[109]:
 def noop(x):
+    """
+	  Do nothing. Just return the current value.
+	"""
     return x
 
 
-# In[117]:
-
-
 def main():
+    """
+	 Main method is organizing all the code to be called upon while executing this file. 
+	 All the parameters are hard coded due to problem resolution of the memory.
+	"""
+
     best_prec1 = 100.
     seed = 100
-    
     is_cuda = False
     is_cuda = is_cuda and torch.cuda.is_available()
-   
-    print('GPU ENABLED:',is_cuda)
     nGPUs = 1
     unit_batch_size = 10
-
     save_model_path = 'work/vnet.base.{}'.format(datestr())
     nll = True #Softmax function (regular or logarithmic)
     weight_decay = 0 #weight decay 
@@ -198,12 +257,15 @@ def main():
         shutil.rmtree(save_model_path)
     os.makedirs(save_model_path, exist_ok=True)
     
+	#Set the seeds and change the parameter type according to the machine type.
     torch.manual_seed(seed)
     if is_cuda:
         torch.cuda.manual_seed(args.seed)
     print('Process Started with Seed,',seed)
-    
+   
     print("VNET Config.")
+	# The model is VNet and the elu uses the ELU function, while the nll
+	# is for the softmax function, if to use logarithmic type or not. 
     model = vnet.VNet(elu=True, nll=nll)
     model = model.double()
     batch_size = nGPUs*unit_batch_size
@@ -213,17 +275,16 @@ def main():
     #Check if the model is already there and needed to be trained for another set of data.
     #If not create a new model.
     if is_resume:
-        exit()
-#         if os.path.isfile(args.resume):
-#             print("=> loading checkpoint '{}'".format(args.resume))
-#             checkpoint = torch.load(args.resume)
-#             args.start_epoch = checkpoint['epoch']
-#             best_prec1 = checkpoint['best_prec1']
-#             model.load_state_dict(checkpoint['state_dict'])
-#             print("=> loaded checkpoint '{}' (epoch {})"
-#                   .format(args.evaluate, checkpoint['epoch']))
-#         else:
-#             print("=> no checkpoint found at '{}'".format(args.resume))
+         if os.path.isfile(args.resume):
+             print("=> loading checkpoint '{}'".format(args.resume))
+             checkpoint = torch.load(args.resume)
+             args.start_epoch = checkpoint['epoch']
+             best_prec1 = checkpoint['best_prec1']
+             model.load_state_dict(checkpoint['state_dict'])
+             print("=> loaded checkpoint '{}' (epoch {})"
+                   .format(args.evaluate, checkpoint['epoch']))
+         else:
+             print("=> no checkpoint found at '{}'".format(args.resume))
     else:
         model.apply(weights_init)
 
@@ -236,13 +297,13 @@ def main():
 
 
 
-#     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
     print("loading training set")
     trainLoader = load_dataset()
     print("loading test set")
     testLoader = load_dataset()
     
-    #Setting up the class weight.For now the hard coding. 
+    #Setting up the class distribution.For now the hard coding the weights 
+	#to 90% for the background and 10% for the foreground.
     bg_weight = 0.9
     fg_weight = 0.1
     class_weights = torch.DoubleTensor([bg_weight, fg_weight])
@@ -261,7 +322,7 @@ def main():
     elif opt_algo == 'rmsprop':
         optimizer = optim.RMSprop(model.parameters(), weight_decay=weight_decay)
 
-#Writing things to the file.
+    #Writing things to the file.
     trainF = open(os.path.join(save_model_path, 'train.csv'), 'w')
     testF = open(os.path.join(save_model_path, 'test.csv'), 'w')
     err_best = 100.
@@ -288,9 +349,6 @@ def main():
     trainF.close()
     testF.close()
     print('Done.')
-
-
-# In[120]:
 
 
 if __name__ == '__main__':
