@@ -130,3 +130,6 @@ ENV/
 
 # Google Cloud Scripts
 gcp.sh
+
+# Paper stuff
+/paper
